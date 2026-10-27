@@ -1,0 +1,40 @@
+#!/data/data/com.termux/files/usr/bin/sh
+
+mkdir -p "$HOME/.local/state"
+exec >> "$HOME/.local/state/start-zotero.log" 2>&1
+
+echo "Startup began: $(date)"
+
+# Load private credentials
+ENV_FILE="$HOME/.config/zotero-webdav.env"
+
+if [ ! -r "$ENV_FILE" ]; then
+    echo "ERROR: Credentials file not found: $ENV_FILE"
+    exit 1
+fi
+
+. "$ENV_FILE"
+
+: "${RCLONE_USER:?RCLONE_USER is missing}"
+: "${RCLONE_PASS:?RCLONE_PASS is missing}"
+
+# Keep Android awake and start SSH
+termux-wake-lock
+sshd
+
+# Allow network connectivity to settle
+sleep 15
+
+# Do not start a duplicate WebDAV server
+if pgrep -f '[r]clone serve webdav gdrive:ZoteroWebDAV' >/dev/null 2>&1; then
+    echo "WebDAV server already running; skipping duplicate"
+else
+    nohup rclone serve webdav gdrive:ZoteroWebDAV \
+        --addr 0.0.0.0:6969 \
+        --vfs-cache-mode full \
+        --log-level INFO \
+        >> "$HOME/.local/state/zotero-webdav.log" 2>&1 \
+        </dev/null &
+
+    echo "WebDAV launch attempted: $(date)"
+fi
